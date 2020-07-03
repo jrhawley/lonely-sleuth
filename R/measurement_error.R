@@ -269,6 +269,94 @@ sleuth_wt <- function(obj, which_beta, which_model = 'full') {
         paste(colnames(d_matrix[beta_i]), collapse = ' ')))
   }
 
+  b <- sapply(
+    obj$fits[[ which_model ]]$models,
+    function(x) {
+      x$ols_fit$coefficients[ beta_i ]
+    })
+  names(b) <- names(obj$fits[[ which_model ]]$models)
+
+  res <- obj$fits[[ which_model ]]$summary
+  res$target_id <- as.character(res$target_id)
+  res <- res[match(names(b), res$target_id), ]
+
+  stopifnot( all.equal(res$target_id, names(b)) )
+
+  se <- sapply(obj$fits[[ which_model ]]$beta_covars,
+    function(x) {
+      x[beta_i, beta_i]
+    })
+  se <- sqrt( se )
+  se <- se[ names(b) ]
+
+  stopifnot( all.equal(names(b), names(se)) )
+
+  res <- dplyr::mutate(res,
+    b = b,
+    se_b = se,
+    wald_stat = b / se,
+    pval = 2 * pnorm(abs(wald_stat), lower.tail = FALSE),
+    qval = p.adjust(pval, method = 'BH')
+    )
+
+  obj <- add_test(obj, res, which_beta, 'wt', which_model)
+
+  obj
+}
+
+
+#' Wald test for James-Stein estimator for a sleuth model
+#'
+#' This function computes the Wald test on one specific 'beta' coefficient on
+#' every transcript.
+#'
+#' @param obj a \code{sleuth} object
+#' @param which_beta a character string of denoting which grouping to test.
+#' For example, if you have a model fit to 'treatment,' with values of neg_ctl, pos_ctl,
+#' and drug, you would need to run \code{sleuth_wt} once each for pos_ctl and drug
+#' @param which_model a character string of length one denoting which model to
+#' use
+#' @return an updated sleuth object
+#' @examples # Assume we have a sleuth object with a model fit to both genotype and drug,
+#' models(so)
+#' # formula:  ~genotype + drug
+#' # coefficients:
+#' #   (Intercept)
+#' #   genotypeKO
+#' #   drugDMSO
+#' so <- sleuth_wt(so, 'genotypeKO')
+#' so <- sleuth_wt(so, 'drugDMSO')
+#' @seealso \code{\link{models}} to view which models have been fit and which
+#' coefficients can be tested, \code{\link{sleuth_results}} to get back
+#' a \code{data.frame} of the results
+#' @export
+sleuth_wt <- function(obj, which_beta, which_model = 'full') {
+  stopifnot( is(obj, 'sleuth') )
+
+  if ( !model_exists(obj, which_model) ) {
+    stop("'", which_model, "' is not a valid model. Please see models(",
+      substitute(obj), ") for a list of fitted models")
+  }
+
+  if(!obj$fits[[which_model]]$transform_synced) {
+    stop("Model '", which_model, "' was not computed using the sleuth object's",
+         " current transform function. Please rerun sleuth_fit for this model.")
+  }
+
+  d_matrix <- obj$fits[[which_model]]$design_matrix
+
+  # get the beta index
+  beta_i <- which(colnames(d_matrix) %in% which_beta)
+
+  if ( length(beta_i) == 0 ) {
+    stop(paste0("'", which_beta,
+        "' doesn't appear in your design. Try one of the following:\n",
+        paste(colnames(d_matrix), collapse = ' ')))
+  } else if ( length(beta_i) > 1 ) {
+    stop(paste0("Sorry. '", which_beta, "' is ambiguous for columns: ",
+        paste(colnames(d_matrix[beta_i]), collapse = ' ')))
+  }
+
   b <- sapply(obj$fits[[ which_model ]]$models,
     function(x) {
       x$ols_fit$coefficients[ beta_i ]

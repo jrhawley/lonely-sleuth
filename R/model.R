@@ -16,6 +16,8 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+allowed_tests <- c('lrt', 'wt', 'jse')
+
 #' Print sleuth model
 #'
 #' Print a model that has been fit by sleuth
@@ -130,19 +132,19 @@ design_matrix <- function(obj, which_model = 'full') {
 #
 # @param obj a sleuth object
 # @param label a string which is a label for the test you are trying to extract
-# @param type the type of test (either: 'lrt', 'wt')
+# @param type the type of test (one of: 'lrt', 'wt', 'jse')
 # @return a data frame with the relevant test information
 get_test <- function(obj, label, type, model) {
   stopifnot( is(obj, 'sleuth') )
-  stopifnot( type %in% c('lrt', 'wt') )
+  stopifnot( type %in% c('lrt', 'wt', 'jse') )
 
   res <- NULL
-  if (type == 'lrt') {
-    res <- obj$tests[[type]][[label]]
-  } else {
+  if (type == 'wt') {
     if ( missing(model) ) {
       stop('must specify a model with wald test')
     }
+    res <- obj$tests[[type]][[model]][[label]]
+  } else {
     res <- obj$tests[[type]][[model]][[label]]
   }
 
@@ -157,7 +159,7 @@ get_test <- function(obj, label, type, model) {
 
 test_exists <- function(obj, label, type, model) {
   stopifnot( is(obj, 'sleuth') )
-  stopifnot( type %in% c('lrt', 'wt') )
+  stopifnot( type %in% allowed_tests )
 
   tryCatch({
     temp <- get_test(obj, label, type, model)
@@ -175,16 +177,16 @@ test_exists <- function(obj, label, type, model) {
 # each element in the list corresponds to a particular model
 list_tests <- function(obj, type) {
   stopifnot( is(obj, 'sleuth') )
-  stopifnot( type %in% c('lrt', 'wt') )
+  stopifnot( type %in% allowed_tests )
 
   res <- NULL
-  if (type == 'lrt') {
-    res <- names(obj$tests[[type]])
-  } else {
+  if (type == 'wt') {
     res <- lapply(obj$tests[[type]], names)
     if ( length(res) == 0 ) {
       res <- NULL
     }
+  } else {
+    res <- names(obj$tests[[type]])
   }
 
   res
@@ -206,7 +208,7 @@ list_all_tests <- function(obj) {
 # @return a sleuth object with the test added
 add_test <- function(obj, test_table, label, type, model) {
   stopifnot( is(obj, 'sleuth') )
-  stopifnot( type %in% c('lrt', 'wt') )
+  stopifnot( type %in% allowed_tests )
 
   if (type == 'wt' && missing(model)) {
     stop('if specifying a wald to test, must also specify a model.')
@@ -218,13 +220,13 @@ add_test <- function(obj, test_table, label, type, model) {
   }
 
   if (type == 'lrt') {
-    obj$tests[[type]][[label]] <- test_table
-  } else {
-    # wald test
+      # wald test
     if ( is.null(obj$tests[[type]][[model]]) ) {
       obj$tests[[type]][[model]] <- list()
     }
     obj$tests[[type]][[model]][[label]] <- test_table
+  } else {
+      obj$tests[[type]][[label]] <- test_table
   }
 
   obj
@@ -236,7 +238,7 @@ tests <- function(obj) {
 }
 
 #' @export
-tests.sleuth <- function(obj, lrt = TRUE, wt = TRUE) {
+tests.sleuth <- function(obj, lrt = TRUE, wt = TRUE, jse = TRUE) {
   if ( lrt ) {
     cat('~likelihood ratio tests:\n') # nolint
     cur_tests <- list_tests(obj, 'lrt')
@@ -268,6 +270,25 @@ tests.sleuth <- function(obj, lrt = TRUE, wt = TRUE) {
     }
   }
 
+  
+  if ( (lrt || wt) && jse ) {
+    cat('\n')
+  }
+
+  if ( jse ) {
+    cat('~jse wald tests:\n') # nolint
+    cur_tests <- list_tests(obj, 'jse')
+    if (length(cur_tests) > 0) {
+      for (i in 1:length(cur_tests)) {
+        cat('\t[ ', names(cur_tests)[i], ' ]\n', sep = '')
+        for (j in 1:length(cur_tests[[i]])) {
+          cat('\t', cur_tests[[i]][j], '\n', sep = '')
+        }
+      }
+    } else {
+      cat('\tno tests found.\n')
+    }
+  }
 
 }
 
